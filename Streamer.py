@@ -20,11 +20,16 @@ queueIN=[]
 queueOUT=[]
 read_serial=""
 
-fronteIn=0
-fronteOut=0
-broker_address="54.68.43.185"
-TOPIC="smartgate/sg1/debug"
+'''
+instead of using a USB connection for communicating
+with ToF sensors, we can use wi-fi communication.
+I am going to comment all part useful for wi-fi communication
+'''
+#broker_address="54.68.43.185"
+#TOPIC="smartgate/sg1/debug"
 
+#callback function used for fill the thread's queue
+'''
 def on_message(client,userdata,message):
     print("on_message...")
     recvMsg=str(message.payload.decode('utf-8'))
@@ -35,11 +40,13 @@ def on_message(client,userdata,message):
     elif recvMsg[2:]=="Exit":
         queueIN.append(1)
        # queryOUT.append(1)
-
+'''
+#callback function used for reconnect the client to the broker
+'''
 def on_connect(client,userdata,flags,rc):
     print("Connected with result code "+str(rc))
     client.subscribe(TOPIC)
-    
+'''    
 class ThrApp(threading.Thread):
     
     def __init__(self,streamHandler,name,queue):
@@ -50,65 +57,91 @@ class ThrApp(threading.Thread):
         self.queue=queue
     def run (self):
         d=deque()
-        count=0
-        i=0
+        #count=0
+        TRIGGER_TIME=0
+        VIDEO_SIZE=12
         t=False
         oneTime=False
         startRecording=3
         firstFrame=0
         videoNumb=0
-        pathbase="VideoGallery/"+self.name
+        pathbase="../VideoGallery/"+self.name
         fourcc=cv2.VideoWriter_fourcc(*'XVID')
         encode_param=[int(cv2.IMWRITE_JPEG_QUALITY),100]
         #self.sH.set(cv2.CAP_PROP_FPS,2)
         while self.sH.isOpened():
-            
+            #read the frame
             ret,frame = self.sH.read()
-            
+            '''
+            if the frame read is the fist use this one
+            for detecting the environmental noise
+            '''
             if(firstFrame==0):
                 print("capture the environ...")
                 cv2.imwrite(pathbase+".jpg",frame,encode_param)
                 firstFrame=1
                 print("STREAM AVAILABLE")
+            #append the new frame to the FRAME QUEUE that represents a "possible" video
             d.appendleft(frame)
+            #if the sensors detect something, video creation phase is started
             if (len(self.queue)>0):
-                i=1
+                TRIGGER_TIME=1
                 initVideo=time.time()
                 queueInstruction=self.queue.pop()
                 if queueInstruction== 0:
                     self.sH.release()
             else:
-                i=0
-            if (len(d)>12):
+                TRIGGER_TIME=0
+            #each video is composed by VIDEO_SIZE frames    
+            if (len(d)>VIDEO_SIZE):
                 d.pop()
-                
-            if (i==1 and oneTime==False):
+            '''
+            this part is the trickiest one in the all script.
+            we need to have two variable:
+            i --> underline the exact moment when the video creation is
+                  taken into charge:TRIGGER_TIME
+            oneTime --> avoid the creation of multiple video about the
+                        same passage
+            '''
+            if (TRIGGER_TIME==1 and oneTime==False):
                 t=True
                 oneTime=True
-            elif(i==0 and oneTime==True):
+            elif(TRIGGER_TIME==0 and oneTime==True):
                 oneTime=False
-            #print("startRec: "+str(startRecording))
+
+            '''
+            each video is composed by two parts:
+            first part: set of frames stored before the TRIGGER_TIME,
+                        in general are 2/3 of VIDEO_SIZE
+            second part: set of frames stored after the TRIGGER_TIME,
+                        in general are 1/3 of VIDEO_SIZE
+            when all the frames are stored, the video will be created
+            '''
             if (startRecording==0 ):
                 timestamp= datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')
                 pathname=pathbase+timestamp
                 out=cv2.VideoWriter(pathname+".avi",fourcc,4,(640,480))
+                '''
+                we write the frame into the video in reverse order,
+                in this way the frames appear in chronological order.
+                '''
                 for x in reversed(d):
-                    #print("popping: "+ str(f.pop()))
-                    #print("status: "+ f)
                     k=out.write(x)
                 out.release()
+                
                 print("time to create a video",time.time()-initVideo)
+                '''
+                add the name of the video into the list of video ready to send to the server
+                '''
                 with open('indexFile','a') as i:
                     i.write(pathname[13:])
                     i.write("\n")
                     i.close()
                 
                 videoNumb=videoNumb+1
-               # print("d size: ", str(len(d)))
-               # d.clear()
-               # print("d after size: ", str(len(d)))
+
                 print("new sub video type: "+self.name+" are generated")
-                count=count+11
+                #count=count+11
                 deltaVideoCreate=time.time()-initVideo
                 print("time spent to create the video: ",deltaVideoCreate)
                 
@@ -116,10 +149,14 @@ class ThrApp(threading.Thread):
                 t=False
             if (t==True):
                 startRecording=startRecording-1
-            
-                    #cv2.imwrite(self.name+str(count)+".png",frame)
-                    #count+=1
+ 
 def main():
+    '''
+    preparing phase:
+    assign  usb port at each cameras.
+    assign a usb port to the sensor
+    create a thread per camera, passing the corrispondent queue. 
+    '''
     cap=cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FPS,2)
     ret,frame=cap.read()
@@ -150,25 +187,19 @@ def main():
     print("cap2 ready")
     threads.append(ThrApp(cap2,"Out",queueOUT).start())
     print("thread active: ", str(len(threads)))
-    #client=mqtt.Client("P1")
-    #client.on_message=on_message
-    #client.on_connect=on_connect
-    #client.connect(broker_address)
-    #client.subscribe(TOPIC)
-    #client.loop_forever()
+
     ser = serial.Serial('/dev/ttyACM0', 19200, timeout = 1)
     while(True):
         line = str(ser.readline())
-        
-        #print(line)
+
         if(len(line) > 2):
-            #print(line[2])
+ 
             if line[2] == '0':
                 queueOUT.append(1)
-                #queueIN.append(1)
+
             elif line[2] == '1':
                 queueIN.append(1)
-                #queryOUT.append(1)
+  
 if __name__=="__main__":
     try:
         main()
