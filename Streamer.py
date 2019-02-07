@@ -14,16 +14,12 @@ from socket import *
 from collections import deque
 from imutils.video import VideoStream
 
-cap=cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_FPS,2)
+
 threads=[]
 queueIN=[]
 queueOUT=[]
 read_serial=""
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BOARD)
-GPIO.setup(13,GPIO.IN)
-GPIO.setup(38,GPIO.IN)
+
 fronteIn=0
 fronteOut=0
 broker_address="54.68.43.185"
@@ -68,6 +64,7 @@ class ThrApp(threading.Thread):
         while self.sH.isOpened():
             
             ret,frame = self.sH.read()
+            
             if(firstFrame==0):
                 print("capture the environ...")
                 cv2.imwrite(pathbase+".jpg",frame,encode_param)
@@ -77,7 +74,9 @@ class ThrApp(threading.Thread):
             if (len(self.queue)>0):
                 i=1
                 initVideo=time.time()
-                self.queue.pop()
+                queueInstruction=self.queue.pop()
+                if queueInstruction== 0:
+                    self.sH.release()
             else:
                 i=0
             if (len(d)>12):
@@ -120,51 +119,64 @@ class ThrApp(threading.Thread):
             
                     #cv2.imwrite(self.name+str(count)+".png",frame)
                     #count+=1
-            
-ret,frame=cap.read()
-print(ret)
-i=0
-j=0
-while ret==False:
-    i+=1
-    cap.release()
-    cap=cv2.VideoCapture(i)
+def main():
+    cap=cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FPS,2)
     ret,frame=cap.read()
-print("index of camera",str(i))
-threads.append(ThrApp(cap,"In",queueIN).start())
-print("preparing capture 2...")
-print("thread active: ", str(len(threads)))
-time.sleep(5)
-#cap2=cv2.VideoCapture("/dev/v4l/by-id/usb-046d_0825_E0B1C560-video-index0")
-cap2=cv2.VideoCapture(1)
-cap2.set(cv2.CAP_PROP_FPS,1)
-ret2,frame2=cap2.read()
-print(ret2)
-while ret2==False:
-    j+=1
-    cap2.release()
-    cap2=cv2.VideoCapture(j)
+    print(ret)
+    i=0
+    j=0
+    while ret==False:
+        i+=1
+        cap.release()
+        cap=cv2.VideoCapture(i)
+        ret,frame=cap.read()
+    print("index of camera",str(i))
+    threads.append(ThrApp(cap,"In",queueIN).start())
+    print("preparing capture 2...")
+    print("thread active: ", str(len(threads)))
+    time.sleep(5)
+    #cap2=cv2.VideoCapture("/dev/v4l/by-id/usb-046d_0825_E0B1C560-video-index0")
+    cap2=cv2.VideoCapture(1)
+    cap2.set(cv2.CAP_PROP_FPS,1)
     ret2,frame2=cap2.read()
-print("index of camera",str(j))
-print("cap2 ready")
-threads.append(ThrApp(cap2,"Out",queueOUT).start())
-print("thread active: ", str(len(threads)))
-#client=mqtt.Client("P1")
-#client.on_message=on_message
-#client.on_connect=on_connect
-#client.connect(broker_address)
-#client.subscribe(TOPIC)
-#client.loop_forever()
-ser = serial.Serial('/dev/ttyACM2', 19200, timeout = 1)
-while(True):
-    line = str(ser.readline())
-    
-    #print(line)
-    if(len(line) > 2):
-        #print(line[2])
-        if line[2] == '0':
-            queueOUT.append(1)
-    	    #queueIN.append(1)
-        elif line[2] == '1':
-            queueIN.append(1)
-       	    #queryOUT.append(1)
+    print(ret2)
+    while ret2==False:
+        j+=1
+        cap2.release()
+        cap2=cv2.VideoCapture(j)
+        ret2,frame2=cap2.read()
+    print("index of camera",str(j))
+    print("cap2 ready")
+    threads.append(ThrApp(cap2,"Out",queueOUT).start())
+    print("thread active: ", str(len(threads)))
+    #client=mqtt.Client("P1")
+    #client.on_message=on_message
+    #client.on_connect=on_connect
+    #client.connect(broker_address)
+    #client.subscribe(TOPIC)
+    #client.loop_forever()
+    ser = serial.Serial('/dev/ttyACM0', 19200, timeout = 1)
+    while(True):
+        line = str(ser.readline())
+        
+        #print(line)
+        if(len(line) > 2):
+            #print(line[2])
+            if line[2] == '0':
+                queueOUT.append(1)
+                #queueIN.append(1)
+            elif line[2] == '1':
+                queueIN.append(1)
+                #queryOUT.append(1)
+if __name__=="__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Interrupted")
+        try:
+            queueOUT.append(0)
+            queueIN.append(0)
+            sys.exit(0)
+        except SystemExit:
+            os._exit(0)
