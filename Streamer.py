@@ -9,11 +9,13 @@ import datetime
 import threading
 import paho.mqtt.client as mqtt
 import numpy as np
+import VL53L0X
 from socket import *
-
+from Sensors import readSensorData
 from collections import deque
 from imutils.video import VideoStream
 
+CSVFILE = '5G_CreationFile.txt'
 
 threads=[]
 queueIN=[]
@@ -42,11 +44,11 @@ def on_message(client,userdata,message):
        # queryOUT.append(1)
 '''
 #callback function used for reconnect the client to the broker
-'''
+
 def on_connect(client,userdata,flags,rc):
     print("Connected with result code "+str(rc))
     client.subscribe(TOPIC)
-'''    
+    
 class ThrApp(threading.Thread):
     
     def __init__(self,streamHandler,name,queue):
@@ -59,7 +61,7 @@ class ThrApp(threading.Thread):
         d=deque()
         #count=0
         TRIGGER_TIME=0
-        VIDEO_SIZE=12
+        VIDEO_SIZE=15
         t=False
         oneTime=False
         startRecording=3
@@ -134,7 +136,8 @@ class ThrApp(threading.Thread):
                 add the name of the video into the list of video ready to send to the server
                 '''
                 with open('indexFile','a') as i:
-                    i.write(pathname[13:])
+                    print(pathname[16:])
+                    i.write(pathname[16:])
                     i.write("\n")
                     i.close()
                 
@@ -143,6 +146,10 @@ class ThrApp(threading.Thread):
                 print("new sub video type: "+self.name+" are generated")
                 #count=count+11
                 deltaVideoCreate=time.time()-initVideo
+                with open(CSVFILE, "a") as j:
+                     j.write(str(deltaVideoCreate))
+                     j.write("\n")
+                     j.close()
                 print("time spent to create the video: ",deltaVideoCreate)
                 
                 startRecording=3
@@ -157,6 +164,7 @@ def main():
     assign a usb port to the sensor
     create a thread per camera, passing the corrispondent queue. 
     '''
+    
     cap=cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FPS,2)
     ret,frame=cap.read()
@@ -187,7 +195,7 @@ def main():
     print("cap2 ready")
     threads.append(ThrApp(cap2,"Out",queueOUT).start())
     print("thread active: ", str(len(threads)))
-
+    '''
     ser = serial.Serial('/dev/ttyACM0', 19200, timeout = 1)
     while(True):
         line = str(ser.readline())
@@ -199,7 +207,10 @@ def main():
 
             elif line[2] == '1':
                 queueIN.append(1)
-  
+    '''
+    readSensorData(queueOUT,queueIN)
+        
+
 if __name__=="__main__":
     try:
         main()
@@ -211,3 +222,6 @@ if __name__=="__main__":
             sys.exit(0)
         except SystemExit:
             os._exit(0)
+    sys.exit(0)
+    queueOUT.append(0)
+    queueIN.append(0)

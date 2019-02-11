@@ -16,8 +16,6 @@ deltaTime=time.time()
 streamIn_path="streamIn.py"
 streamOut_path="stream.py"
 
-CSVFILE = '5G_TransferTime.txt'
-
 def from_stream_to():
     print("ENTRO")
     active=1
@@ -44,7 +42,7 @@ def send_To_Server(fileName):
     scpC=scp.SCPClient(ssh_client.get_transport())
     scpC.put(videoPath,"/home/ubuntu/smartgate_camera/VideoGallery")
     deltaT=time.time()
-    with open (CSVFILE,"a") as y:
+    with open ("transferTime","a") as y:
          y.write(str(deltaT))
          y.write("\n")
          y.close()
