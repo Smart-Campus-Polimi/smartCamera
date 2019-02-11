@@ -11,7 +11,7 @@ import paho.mqtt.client as mqtt
 import numpy as np
 import VL53L0X
 from socket import *
-from Sensors import readSensorData
+from SensorsEdge import readSensorData
 from collections import deque
 from imutils.video import VideoStream
 

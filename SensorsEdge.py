@@ -1,8 +1,8 @@
 import RPi.GPIO as GPIO
 import time
 import VL53L0X
-
-
+import signal,sys
+from threading import Timer
 # GPIO for Sensor 1 shutdown pin
 sensor1_shutdown = 20
 # GPIO for Sensor 2 shutdown pin
@@ -40,12 +40,29 @@ time.sleep(0.50)
 tof1.start_ranging(VL53L0X.VL53L0X_BETTER_ACCURACY_MODE)
 global LASER_RANGE
 LASER_RANGE=8190
+global prevEdge
+prevEdge="None"
+def fedResetTimer():
+    global prevEdge
+    prevEdge="None"
+    print("RESET PREV_EDGE")
+global resetTimer
+resetTimer=Timer(4,fedResetTimer)
 timing = tof.get_timing()
+def signal_handler(signal,frame):
+    print("\nprogram exiting gracefully")
+    sys.exit(0)
+signal.signal(signal.SIGINT,signal_handler)
 
-def edgeFinder(pair_side_0,pair_side_1,prevEdge):
+
+
+def edgeFinder(pair_side_0,pair_side_1,queueOUT,queueIN):
     side_0_count=0
+    global prevEdge
+    global resetTimer
     side_1_count=0
     count=0
+    
     #print("prevEdge: ",prevEdge)
     for x in range(0,len (pair_side_0)):
         
@@ -65,25 +82,38 @@ def edgeFinder(pair_side_0,pair_side_1,prevEdge):
         #print("SIDE 0 COUNT OK")
         if (prevEdge=="SIDE 1"):
                 print("EXIT")
+                queueOUT.append(1)
                 prevEdge="Lock"
+                resetTimer.cancel()
+                resetTimer=Timer(10,fedResetTimer)
+                resetTimer.start()
                 
         elif(prevEdge=="None"):
                 prevEdge="SIDE 0"
-                
-        else:
-                print("Still Side 0 edge")
+                resetTimer.cancel()
+                resetTimer=Timer(10,fedResetTimer)
+                resetTimer.start()
+        #else:
+               # print("Still Side 0 edge")
     if (side_1_count==2):
-        print("SIDE 0 COUNT OK")
+        #print("SIDE 0 COUNT OK")
         if (prevEdge=="SIDE 0"):
                 print("ENTRANCE")
+                queueIN.append(1)
                 prevEdge="Lock"
+                resetTimer.cancel()
+                resetTimer=Timer(10,fedResetTimer)
+                resetTimer.start()
         elif(prevEdge=="None"):
                 prevEdge="SIDE 1"
-        else:
-                print("Still Side 1 edge")
-    return prevEdge
+                resetTimer.cancel()
+                resetTimer=Timer(10,fedResetTimer)
+                resetTimer.start()
+        #else:
+               # print("Still Side 1 edge")
     
-def readSensorData ():
+    
+def readSensorData (queueOUT,queueIN):
         
        
         pair_side_0=[LASER_RANGE,LASER_RANGE]
@@ -91,9 +121,10 @@ def readSensorData ():
   
         precTime=time.time()
         init=time.time()
-        prevEdge="None"
+        #prevEdge="None"
+        resetTimer.start()
         try:
-            while (time.time()-init)<30:
+            while True:
                         
                 #print("delta: ",time.time()-precTime)
                 precTime=time.time()
@@ -114,11 +145,12 @@ def readSensorData ():
 				#print ("sensor %d - %d mm, %d cm, iteration %d" % (tof.my_object_number, distance, (distance/10), count))
                 if (distance_side_1 > 1100):
                     distance_side_1=LASER_RANGE
-                #print("pair side 0: ",pair_side_0)
-                #print("pair side 1: ",pair_side_1)
-                prevEdge=edgeFinder(pair_side_0,pair_side_1,prevEdge)
+                print("pair side 0: ",pair_side_0)
+                print("pair side 1: ",pair_side_1)
+                edgeFinder(pair_side_0,pair_side_1,queueOUT,queueIN)
                 #print("main prevEdge: ",prevEdge)
         except KeyboardInterrupt:
                 print('interrupted!')
-readSensorData()
+
    
+readSensorData([],[])
