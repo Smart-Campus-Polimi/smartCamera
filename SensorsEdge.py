@@ -82,7 +82,7 @@ def edgeFinder(pair_side_0,pair_side_1,queueOUT,queueIN):
         #print("SIDE 0 COUNT OK")
         if (prevEdge=="SIDE 1"):
                 print("EXIT")
-                queueOUT.append(1)
+                queueIN.append(1)
                 prevEdge="Lock"
                 resetTimer.cancel()
                 resetTimer=Timer(10,fedResetTimer)
@@ -99,7 +99,7 @@ def edgeFinder(pair_side_0,pair_side_1,queueOUT,queueIN):
         #print("SIDE 0 COUNT OK")
         if (prevEdge=="SIDE 0"):
                 print("ENTRANCE")
-                queueIN.append(1)
+                queueOUT.append(1)
                 prevEdge="Lock"
                 resetTimer.cancel()
                 resetTimer=Timer(10,fedResetTimer)
@@ -143,14 +143,14 @@ def readSensorData (queueOUT,queueIN):
                 if (distance_side_0 > 1100):
                     distance_side_0=LASER_RANGE
 				#print ("sensor %d - %d mm, %d cm, iteration %d" % (tof.my_object_number, distance, (distance/10), count))
-                if (distance_side_1 > 1100):
+                if (distance_side_1 >1100):
                     distance_side_1=LASER_RANGE
-                print("pair side 0: ",pair_side_0)
-                print("pair side 1: ",pair_side_1)
+               # print("pair side 0: ",pair_side_0)
+               # print("pair side 1: ",pair_side_1)
                 edgeFinder(pair_side_0,pair_side_1,queueOUT,queueIN)
                 #print("main prevEdge: ",prevEdge)
         except KeyboardInterrupt:
                 print('interrupted!')
 
    
-readSensorData([],[])
+#readSensorData([],[])

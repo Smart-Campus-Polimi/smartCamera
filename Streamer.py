@@ -127,10 +127,17 @@ class ThrApp(threading.Thread):
                 we write the frame into the video in reverse order,
                 in this way the frames appear in chronological order.
                 '''
+               
                 for x in reversed(d):
-                    k=out.write(x)
+                   # print(x.shape)
+                   # reversingImage=time.time()
+                    rows,cols,color=x.shape
+                    M=cv2.getRotationMatrix2D((cols/2,rows/2),90,1)
+                    reverseImg=cv2.warpAffine(x,M,(cols,rows))
+                    #reverseTime=time.time()-reversingImage
+                    #print("time to reverse image: ", reverseTime)
+                    k=out.write(reverseImg)
                 out.release()
-                
                 print("time to create a video",time.time()-initVideo)
                 '''
                 add the name of the video into the list of video ready to send to the server
