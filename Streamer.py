@@ -5,6 +5,7 @@ import RPi.GPIO as GPIO
 import cv2
 import os
 import time
+import subprocess
 import datetime
 import threading
 import paho.mqtt.client as mqtt
@@ -27,27 +28,59 @@ instead of using a USB connection for communicating
 with ToF sensors, we can use wi-fi communication.
 I am going to comment all part useful for wi-fi communication
 '''
-#broker_address="54.68.43.185"
-#TOPIC="smartgate/sg1/debug"
+
 
 #callback function used for fill the thread's queue
-'''
-def on_message(client,userdata,message):
-    print("on_message...")
-    recvMsg=str(message.payload.decode('utf-8'))
-    print("message received: ",recvMsg[2:])
-    if recvMsg[2:]=="Entry":
-        queueOUT.append(1)
-    #    queueIN.append(1)
-    elif recvMsg[2:]=="Exit":
-        queueIN.append(1)
-       # queryOUT.append(1)
-'''
-#callback function used for reconnect the client to the broker
 
-def on_connect(client,userdata,flags,rc):
-    print("Connected with result code "+str(rc))
-    client.subscribe(TOPIC)
+
+#callback function used for reconnect the client to the broker
+def signal_handler(signal,frame):
+    print("\nprogram exiting gracefully--STREAMER")
+    queueOUT.append(0)
+    queueIN.append(0)
+    sys.exit(0)
+signal.signal(signal.SIGINT,signal_handler)
+
+
+class ThrMosq(threading.Thread):
+    def __init__(self,queueIN,queueOUT):
+        threading.Thread.__init__(self)
+        self.qIn=queueIN
+        self.qOut=queueOUT
+        self.broker_address="34.244.160.143"
+        self.TOPIC="sgc/detection"
+		
+    def on_message(self,client,userdata,message):
+        print("on_message...")
+        recvMsg=str(message.payload.decode('utf-8'))
+        print("message received: ",recvMsg)
+        if recvMsg=="IN":
+            inTrace=subprocess.Popen(['omxplayer','-o','local','/home/pi/Desktop/clientGate/Gate_Sounds/entrance.mp3'])
+            print("OKK")
+            queueOUT.append(1)
+    #    queueIN.append(1)
+        elif recvMsg=="OUT":
+            outTrace=subprocess.Popen(['omxplayer','-o','local','/home/pi/Desktop/clientGate/Gate_Sounds/exit.mp3'])
+            queueIN.append(1)
+       # queryOUT.append(1)
+	   
+    def on_connect(self,client,userdata,flags,rc):
+        print("Connected with result code "+str(rc))
+        if rc==0:
+             print("connected OK")
+             client.subscribe(self.TOPIC)
+        else:
+             print("Bad connection")
+             client.loop_stop()
+    
+    def run (self):
+	    
+        client = mqtt.Client()
+        client.on_connect =self.on_connect
+        client.on_message = self.on_message
+        
+        client.connect(self.broker_address, 1883, 60)
+        client.loop_forever()		
     
 class ThrApp(threading.Thread):
     
@@ -67,7 +100,7 @@ class ThrApp(threading.Thread):
         startRecording=3
         firstFrame=0
         videoNumb=0
-        pathbase="../VideoGallery/"+self.name
+        pathbase="/home/pi/Desktop/VideoGallery/"+self.name
         fourcc=cv2.VideoWriter_fourcc(*'XVID')
         encode_param=[int(cv2.IMWRITE_JPEG_QUALITY),100]
         #self.sH.set(cv2.CAP_PROP_FPS,2)
@@ -142,9 +175,9 @@ class ThrApp(threading.Thread):
                 '''
                 add the name of the video into the list of video ready to send to the server
                 '''
-                with open('indexFile','a') as i:
-                    print(pathname[16:])
-                    i.write(pathname[16:])
+                with open('/home/pi/Desktop/clientGate/indexFile','a') as i:
+                    print(pathname[30:])
+                    i.write(pathname[30:])
                     i.write("\n")
                     i.close()
                 
@@ -215,6 +248,8 @@ def main():
             elif line[2] == '1':
                 queueIN.append(1)
     '''
+    threads.append(ThrMosq(queueIN,queueOUT).start())
+    print("thread active: ", str(len(threads)))
     readSensorData(queueOUT,queueIN)
         
 

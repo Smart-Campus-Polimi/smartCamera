@@ -1,10 +1,12 @@
 import RPi.GPIO as GPIO
 import time
+import os
 import VL53L0X
 import signal,sys
+import subprocess
 from threading import Timer
 # GPIO for Sensor 1 shutdown pin
-sensor1_shutdown = 20
+sensor1_shutdown = 5
 # GPIO for Sensor 2 shutdown pin
 sensor2_shutdown = 16
 
@@ -42,15 +44,19 @@ global LASER_RANGE
 LASER_RANGE=8190
 global prevEdge
 prevEdge="None"
+def timerAudio():
+    audioTime=subprocess.Popen(['omxplayer','-o','local','--vol','-4000','/home/pi/Desktop/clientGate/Gate_Sounds/entrance.mp3'])
+    Timer(180,timerAudio).start()
 def fedResetTimer():
     global prevEdge
     prevEdge="None"
     print("RESET PREV_EDGE")
 global resetTimer
 resetTimer=Timer(4,fedResetTimer)
+timerTrace=Timer(180,timerAudio)
 timing = tof.get_timing()
 def signal_handler(signal,frame):
-    print("\nprogram exiting gracefully")
+    print("\nprogram exiting gracefully--SENSORS")
     sys.exit(0)
 signal.signal(signal.SIGINT,signal_handler)
 
@@ -62,7 +68,7 @@ def edgeFinder(pair_side_0,pair_side_1,queueOUT,queueIN):
     global resetTimer
     side_1_count=0
     count=0
-    
+    AUDIOPATH="/home/pi/Desktop/clientGate/Gate_Sounds/"    
     #print("prevEdge: ",prevEdge)
     for x in range(0,len (pair_side_0)):
         
@@ -83,6 +89,10 @@ def edgeFinder(pair_side_0,pair_side_1,queueOUT,queueIN):
         if (prevEdge=="SIDE 1"):
                 print("EXIT")
                 queueIN.append(1)
+                #print("current audio trace", audioList[0])
+                audiotrace="exit.mp3"
+                audioExit=subprocess.Popen(['omxplayer','-o','local',AUDIOPATH+audiotrace])
+                #audioList.append(audiotrace)
                 prevEdge="Lock"
                 resetTimer.cancel()
                 resetTimer=Timer(10,fedResetTimer)
@@ -100,6 +110,10 @@ def edgeFinder(pair_side_0,pair_side_1,queueOUT,queueIN):
         if (prevEdge=="SIDE 0"):
                 print("ENTRANCE")
                 queueOUT.append(1)
+                #print("current audio trace", audioList[0])
+                audiotrace="entrance.mp3"
+                audioEntrance=subprocess.Popen(['omxplayer','-o','local',AUDIOPATH+audiotrace])
+                #audioList.append(audiotrace)
                 prevEdge="Lock"
                 resetTimer.cancel()
                 resetTimer=Timer(10,fedResetTimer)
@@ -115,14 +129,22 @@ def edgeFinder(pair_side_0,pair_side_1,queueOUT,queueIN):
     
 def readSensorData (queueOUT,queueIN):
         
-       
+        file=open("/home/pi/Desktop/clientGate/processID.txt",'w')
+        file.write(str(os.getpid()))
+        file.close()        
         pair_side_0=[LASER_RANGE,LASER_RANGE]
         pair_side_1=[LASER_RANGE,LASER_RANGE]
-  
+        audioList=[]
+        #with open("/home/pi/Desktop/clientGate/audioList.txt",'r') as a:
+         #     for line in a:
+          #          line=line.strip('\n')
+           #         audioList.append(line)
+        #print(audioList)  
         precTime=time.time()
         init=time.time()
         #prevEdge="None"
         resetTimer.start()
+        timerTrace.start()
         try:
             while True:
                         
@@ -145,8 +167,8 @@ def readSensorData (queueOUT,queueIN):
 				#print ("sensor %d - %d mm, %d cm, iteration %d" % (tof.my_object_number, distance, (distance/10), count))
                 if (distance_side_1 >1100):
                     distance_side_1=LASER_RANGE
-               # print("pair side 0: ",pair_side_0)
-               # print("pair side 1: ",pair_side_1)
+#                print("pair side 0: ",pair_side_0)
+#                print("pair side 1: ",pair_side_1)
                 edgeFinder(pair_side_0,pair_side_1,queueOUT,queueIN)
                 #print("main prevEdge: ",prevEdge)
         except KeyboardInterrupt:

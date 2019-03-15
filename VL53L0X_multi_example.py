@@ -27,7 +27,7 @@ import VL53L0X
 import RPi.GPIO as GPIO
 
 # GPIO for Sensor 1 shutdown pin
-sensor1_shutdown = 20
+sensor1_shutdown = 5
 # GPIO for Sensor 2 shutdown pin
 sensor2_shutdown = 16
 
@@ -67,21 +67,22 @@ if (timing < 20000):
     timing = 20000
 print ("Timing %d ms" % (timing/1000))
 
-for count in range(1,1001):
-    distance = tof.get_distance()
-    if (distance > 0):
+while(True):
+    distance2 = tof.get_distance()
+    #if (distance > 0):
       # print("")
-        print ("sensor %d - %d mm, %d cm, iteration %d" % (tof.my_object_number, distance, (distance/10), count))
-    else:
-        print ("%d - Error" % tof.my_object_number)
+      #  print ("sensor %d - %d mm, %d cm, iteration %d" % (tof.my_object_number, distance, (distance/10), count))
+   # else:
+    #    print ("%d - Error" % tof.my_object_number)
 
-    distance = tof1.get_distance()
-    if (distance > 0):
+    distance1 = tof1.get_distance()
+    #if (distance > 0):
        #print("")
-        print ("sensor %d - %d mm, %d cm, iteration %d" % (tof1.my_object_number, distance, (distance/10), count))
-    else:
-        print ("%d - Error" % tof.my_object_number)
+     #   print ("sensor %d - %d mm, %d cm, iteration %d" % (tof1.my_object_number, distance, (distance/10), count))
+    #else:
+     #   print ("%d - Error" % tof.my_object_number)
 
+    print(distance1, distance2)
     time.sleep(timing/1000000.00)
 
 tof1.stop_ranging()
