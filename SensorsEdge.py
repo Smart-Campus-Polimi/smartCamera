@@ -44,6 +44,12 @@ global LASER_RANGE
 LASER_RANGE=8190
 global prevEdge
 prevEdge="None"
+#def stayInFront():
+ #   print("IN FRONT")
+ #   global prevEdge
+ #   print(prevEdge)
+ #   if (prevEdge=="SIDE 0") or (prevEdge=="SIDE 1"):
+ #        subprocess.Popen(['omxplayer','-o','local','/home/pi/Desktop/clientGate/Gate_Sounds/official.mp3'])
 def timerAudio():
     audioTime=subprocess.Popen(['omxplayer','-o','local','--vol','-4000','/home/pi/Desktop/clientGate/Gate_Sounds/entrance.mp3'])
     Timer(180,timerAudio).start()
@@ -54,6 +60,8 @@ def fedResetTimer():
 global resetTimer
 resetTimer=Timer(4,fedResetTimer)
 timerTrace=Timer(180,timerAudio)
+#global stayTrace
+#stayTrace=Timer(6,stayInFront)
 timing = tof.get_timing()
 def signal_handler(signal,frame):
     print("\nprogram exiting gracefully--SENSORS")
@@ -68,6 +76,7 @@ def edgeFinder(pair_side_0,pair_side_1,queueOUT,queueIN):
     global resetTimer
     side_1_count=0
     count=0
+    global stayTrace
     AUDIOPATH="/home/pi/Desktop/clientGate/Gate_Sounds/"    
     #print("prevEdge: ",prevEdge)
     for x in range(0,len (pair_side_0)):
@@ -95,14 +104,20 @@ def edgeFinder(pair_side_0,pair_side_1,queueOUT,queueIN):
                 #audioList.append(audiotrace)
                 prevEdge="Lock"
                 resetTimer.cancel()
-                resetTimer=Timer(10,fedResetTimer)
+                resetTimer=Timer(6,fedResetTimer)
                 resetTimer.start()
+#                stayTrace.cancel()
+#                stayTrace=Timer(3,stayInFront)
+#                stayTrace.start()
                 
         elif(prevEdge=="None"):
                 prevEdge="SIDE 0"
                 resetTimer.cancel()
-                resetTimer=Timer(10,fedResetTimer)
+                resetTimer=Timer(6,fedResetTimer)
                 resetTimer.start()
+#                stayTrace.cancel()
+#                stayTrace=Timer(3,stayInFront)
+#                stayTrace.start()
         #else:
                # print("Still Side 0 edge")
     if (side_1_count==2):
@@ -116,13 +131,19 @@ def edgeFinder(pair_side_0,pair_side_1,queueOUT,queueIN):
                 #audioList.append(audiotrace)
                 prevEdge="Lock"
                 resetTimer.cancel()
-                resetTimer=Timer(10,fedResetTimer)
+                resetTimer=Timer(6,fedResetTimer)
                 resetTimer.start()
+#                stayTrace.cancel()
+#                stayTrace=Timer(3,stayInFront)
+#                stayTrace.start()
         elif(prevEdge=="None"):
                 prevEdge="SIDE 1"
                 resetTimer.cancel()
-                resetTimer=Timer(10,fedResetTimer)
+                resetTimer=Timer(6,fedResetTimer)
                 resetTimer.start()
+#                stayTrace.cancel()
+#                stayTrace=Timer(3,stayInFront)
+#                stayTrace.start()
         #else:
                # print("Still Side 1 edge")
     
@@ -145,6 +166,7 @@ def readSensorData (queueOUT,queueIN):
         #prevEdge="None"
         resetTimer.start()
         timerTrace.start()
+#        stayTrace.start()
         try:
             while True:
                         

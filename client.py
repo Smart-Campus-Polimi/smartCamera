@@ -15,6 +15,7 @@ ssh_client=paramiko.SSHClient()
 ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 #cert=paramiko.RSAKey.from_private_key_file("UC15VM.pem")
 ssh_client.connect(hostname='ec2-54-68-43-185.us-west-2.compute.amazonaws.com',username ='ubuntu',key_filename="/home/pi/Desktop/clientGate/UC15VM.pem")
+#ssh_client.connect(hostname='ec2-34-244-160-143.eu-west-1.compute.amazonaws.com',username='ubuntu',password='vodafone5G')
 #ssh_client.connect(hostname="54.68.43.185",key=cert)
 deltaTime=time.time()
 stream_path="/home/pi/Desktop/clientGate/Streamer.py"

@@ -15,8 +15,13 @@ from socket import *
 from SensorsEdge import readSensorData
 from collections import deque
 from imutils.video import VideoStream
+import boto3 
+import io
+import multiprocessing as mp
 
 CSVFILE = '5G_CreationFile.txt'
+VIDEO_SIZE=15
+FRAME_AFTER = 3
 
 threads=[]
 queueIN=[]
@@ -29,9 +34,9 @@ with ToF sensors, we can use wi-fi communication.
 I am going to comment all part useful for wi-fi communication
 '''
 
-
-#callback function used for fill the thread's queue
-
+session = boto3.Session(profile_name='default')
+rekognition = session.client('rekognition', 'eu-west-1')
+agender = PyAgender()
 
 #callback function used for reconnect the client to the broker
 def signal_handler(signal,frame):
@@ -42,6 +47,24 @@ def signal_handler(signal,frame):
 signal.signal(signal.SIGINT,signal_handler)
 
 
+def reko_worker(frame):
+    rtt = time.time()
+    _, buff = cv2.imencode('.jpg', frame)
+    byte_img = io.BytesIO(buff).getvalue()
+    response = rekognition.detect_faces(Image= {'Bytes': byte_img}, Attributes=['ALL'])
+    print("Request time: ", time.time()-rtt)
+    
+    return response  
+
+def local_worker(frame):
+    rtt = time.time()
+    _, buff = cv2.imencode('.jpg', frame)
+    byte_img = io.BytesIO(buff).getvalue()
+    response = agender.detect_genders_ages(byte_img)    
+    print("Request time: ", time.time()-rtt)
+    
+    return response
+    
 class ThrMosq(threading.Thread):
     def __init__(self,queueIN,queueOUT):
         threading.Thread.__init__(self)
@@ -57,13 +80,11 @@ class ThrMosq(threading.Thread):
         if recvMsg=="IN":
             inTrace=subprocess.Popen(['omxplayer','-o','local','/home/pi/Desktop/clientGate/Gate_Sounds/entrance.mp3'])
             print("OKK")
-            queueOUT.append(1)
-    #    queueIN.append(1)
+            queueIN.append(1)
         elif recvMsg=="OUT":
             outTrace=subprocess.Popen(['omxplayer','-o','local','/home/pi/Desktop/clientGate/Gate_Sounds/exit.mp3'])
-            queueIN.append(1)
-       # queryOUT.append(1)
-	   
+            queueOUT.append(1)
+   
     def on_connect(self,client,userdata,flags,rc):
         print("Connected with result code "+str(rc))
         if rc==0:
@@ -80,69 +101,70 @@ class ThrMosq(threading.Thread):
         client.on_message = self.on_message
         
         client.connect(self.broker_address, 1883, 60)
-        client.loop_forever()		
+        client.loop_forever()
     
 class ThrApp(threading.Thread):
-    
-    def __init__(self,streamHandler,name,queue):
-        
+    def __init__(self, streamHandler ,name, queue):
         threading.Thread.__init__(self)
-        self.sH=streamHandler
-        self.name=name
-        self.queue=queue
+        self.camera = streamHandler
+        self.name = name
+        self.queue = queue
+    
     def run (self):
-        d=deque()
-        #count=0
-        TRIGGER_TIME=0
-        VIDEO_SIZE=15
-        t=False
-        oneTime=False
-        startRecording=3
-        firstFrame=0
-        videoNumb=0
-        pathbase="/home/pi/Desktop/VideoGallery/"+self.name
-        fourcc=cv2.VideoWriter_fourcc(*'XVID')
-        encode_param=[int(cv2.IMWRITE_JPEG_QUALITY),100]
-        #self.sH.set(cv2.CAP_PROP_FPS,2)
-        while self.sH.isOpened():
-            #read the frame
-            ret,frame = self.sH.read()
+        frames_queue = deque()
+
+        event_present = False
+        t = False
+        first_time = False
+        startRecording = FRAME_AFTER
+        firstFrame = True
+        '''
+        pathbase = "/home/pi/Desktop/VideoGallery/"+self.name
+        fourcc = cv2.VideoWriter_fourcc(*'XVID')
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),100]
+        '''
+        while self.camera.isOpened():
+            ret, frame = self.camera.read()
             '''
             if the frame read is the fist use this one
             for detecting the environmental noise
-            '''
-            if(firstFrame==0):
+            
+            if firstFrame:
                 print("capture the environ...")
                 cv2.imwrite(pathbase+".jpg",frame,encode_param)
-                firstFrame=1
+                firstFrame = False
                 print("STREAM AVAILABLE")
+            ''' 
             #append the new frame to the FRAME QUEUE that represents a "possible" video
-            d.appendleft(frame)
-            #if the sensors detect something, video creation phase is started
-            if (len(self.queue)>0):
-                TRIGGER_TIME=1
-                initVideo=time.time()
-                queueInstruction=self.queue.pop()
-                if queueInstruction== 0:
-                    self.sH.release()
-            else:
-                TRIGGER_TIME=0
+            frames_queue.append(frame)
+            
             #each video is composed by VIDEO_SIZE frames    
-            if (len(d)>VIDEO_SIZE):
-                d.pop()
+            if len(frames_queue) > VIDEO_SIZE:
+                frames_queue.pop()
+            
+            #if the sensors detect something, video creation phase is started
+            if len(self.queue)>0:
+                event_present = True
+                initVideo=time.time()
+                queueInstruction = self.queue.pop()
+                if queueInstruction == 0:
+                    self.camera.release()
+            else:
+                 event_present = False
+                         
             '''
             this part is the trickiest one in the all script.
             we need to have two variable:
-            i --> underline the exact moment when the video creation is
+            event_present --> underline the exact moment when the video creation is
                   taken into charge:TRIGGER_TIME
-            oneTime --> avoid the creation of multiple video about the
+            first_time --> avoid the creation of multiple video about the
                         same passage
             '''
-            if (TRIGGER_TIME==1 and oneTime==False):
+            if event_present and not first_time:
                 t=True
-                oneTime=True
-            elif(TRIGGER_TIME==0 and oneTime==True):
-                oneTime=False
+                first_time = True
+            elif not event_present:
+                first_time = False
 
             '''
             each video is composed by two parts:
@@ -152,47 +174,28 @@ class ThrApp(threading.Thread):
                         in general are 1/3 of VIDEO_SIZE
             when all the frames are stored, the video will be created
             '''
-            if (startRecording==0 ):
-                timestamp= datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')
-                pathname=pathbase+timestamp
-                out=cv2.VideoWriter(pathname+".avi",fourcc,4,(640,480))
+            if startRecording == 0:
+                timestamp = datetime.datetime.now().strftime('%d-%m-%Y_%H:%M:%S')
+                '''
+                pathname = pathbase + timestamp
+                out = cv2.VideoWriter(pathname+".avi",fourcc,4,(640,480))
+                '''
                 '''
                 we write the frame into the video in reverse order,
                 in this way the frames appear in chronological order.
                 '''
-               
-                for x in reversed(d):
-                   # print(x.shape)
-                   # reversingImage=time.time()
-                    rows,cols,color=x.shape
-                    M=cv2.getRotationMatrix2D((cols/2,rows/2),90,1)
-                    reverseImg=cv2.warpAffine(x,M,(cols,rows))
-                    #reverseTime=time.time()-reversingImage
-                    #print("time to reverse image: ", reverseTime)
-                    k=out.write(reverseImg)
-                out.release()
-                print("time to create a video",time.time()-initVideo)
-                '''
-                add the name of the video into the list of video ready to send to the server
-                '''
-                with open('/home/pi/Desktop/clientGate/indexFile','a') as i:
-                    print(pathname[30:])
-                    i.write(pathname[30:])
-                    i.write("\n")
-                    i.close()
-                
-                videoNumb=videoNumb+1
+ 
+                time_request = time.time()                    
+                with mp.Pool(processes=len(frames_queue)) as pool:
+                    output = pool.map(reko_worker, list(frames_queue))
 
-                print("new sub video type: "+self.name+" are generated")
-                #count=count+11
-                deltaVideoCreate=time.time()-initVideo
-                with open(CSVFILE, "a") as j:
-                     j.write(str(deltaVideoCreate))
-                     j.write("\n")
-                     j.close()
-                print("time spent to create the video: ",deltaVideoCreate)
+                print("Total time to process: ", time.time() - time_request)
                 
-                startRecording=3
+                print("number of results: ", len(output))
+                for res in output:
+                    print(res['FaceDetails'])
+                
+                startRecording = FRAME_AFTER
                 t=False
             if (t==True):
                 startRecording=startRecording-1
@@ -205,52 +208,52 @@ def main():
     create a thread per camera, passing the corrispondent queue. 
     '''
     
-    cap=cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FPS,2)
-    ret,frame=cap.read()
-    print(ret)
-    i=0
+    
     j=0
-    while ret==False:
-        i+=1
-        cap.release()
-        cap=cv2.VideoCapture(i)
-        ret,frame=cap.read()
-    print("index of camera",str(i))
-    threads.append(ThrApp(cap,"In",queueIN).start())
-    print("preparing capture 2...")
-    print("thread active: ", str(len(threads)))
+    camera1_index = 0
+    isReading = False
+
+    while not isReading:
+        if camera1_index>0:
+            camera1.release()
+        camera1=cv2.VideoCapture(camera1_index)
+        camera1.set(cv2.CAP_PROP_FPS,2)
+        isReading, frame = camera1.read()
+        print("Open camera 1? ", isReading)
+        camera1_index += 1
+            
+    print("index of camera 1",str(camera1_index))
+    
+    isReading = False
     time.sleep(5)
-    #cap2=cv2.VideoCapture("/dev/v4l/by-id/usb-046d_0825_E0B1C560-video-index0")
-    cap2=cv2.VideoCapture(1)
-    cap2.set(cv2.CAP_PROP_FPS,1)
-    ret2,frame2=cap2.read()
-    print(ret2)
-    while ret2==False:
-        j+=1
-        cap2.release()
-        cap2=cv2.VideoCapture(j)
-        ret2,frame2=cap2.read()
-    print("index of camera",str(j))
-    print("cap2 ready")
-    threads.append(ThrApp(cap2,"Out",queueOUT).start())
-    print("thread active: ", str(len(threads)))
-    '''
-    ser = serial.Serial('/dev/ttyACM0', 19200, timeout = 1)
-    while(True):
-        line = str(ser.readline())
+    
+    #camera 2
+    print("preparing capture 2...")
+    
+    camera2_index = camera1_index + 1
+    while not isReading:
+        if camera2_index > camera1_index+1:
+            camera2.release()
+        camera2=cv2.VideoCapture(camera2_index)
+        camera2.set(cv2.CAP_PROP_FPS,2)
+        isReading, frame = camera2.read()
+        print("Open camera 2? ", isReading)
+        camera2_index += 1
 
-        if(len(line) > 2):
- 
-            if line[2] == '0':
-                queueOUT.append(1)
-
-            elif line[2] == '1':
-                queueIN.append(1)
-    '''
+    print("index of camera 2",str(camera2_index))
+    
+    
+    #Creating Threads
+    threads.append(ThrApp(camera1, "In", queueIN).start())
+    threads.append(ThrApp(camera2, "Out", queueOUT).start())
+    
     threads.append(ThrMosq(queueIN,queueOUT).start())
+    
     print("thread active: ", str(len(threads)))
-    readSensorData(queueOUT,queueIN)
+    if len(threads) < 3:
+        print("ERROR THREADS", len(threads))
+        
+    readSensorData(queueOUT, queueIN)
         
 
 if __name__=="__main__":
